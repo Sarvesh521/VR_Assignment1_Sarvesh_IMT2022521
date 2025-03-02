@@ -16,24 +16,57 @@ This repository contains a computer vision assignment implemented in Python. It 
 
 ## Running the Code
 
-The code can be executed via the command line or through Jupyter notebooks.
+To ensure a smooth execution of the code, it is recommended to use a virtual environment to manage dependencies.
 
-- **Via Command Line:**
+### **1. Setting Up a Virtual Environment**
 
-  - For coin detection, segmentation, and counting:
-    ```sh
-    python Coins.py
-    ```
-  - For panorama creation:
-    ```sh
-    python Panorama.py
-    ```
+#### **Windows**
+```sh
+python -m venv venv
+venv\Scripts\activate
+```
 
-- **Via Jupyter Notebooks:**
+#### **macOS/Linux**
+```sh
+python3 -m venv venv
+source venv/bin/activate
+```
 
-  - Open and run the individual notebooks:
-    - [Part1-coins.ipynb](http://_vscodecontentref_/0)
-    - [Part2-Panorama.ipynb](http://_vscodecontentref_/1)
+### **2. Installing Dependencies**
+Once the virtual environment is activated, install the required dependencies from `requirements.txt`:
+```sh
+pip install -r requirements.txt
+```
+
+### **3. Running the Code**
+
+#### **Via Command Line:**
+
+- **For coin detection, segmentation, and counting:**
+  ```sh
+  python Coins.py
+  ```
+
+- **For panorama creation:**
+  ```sh
+  python Panorama.py
+  ```
+
+#### **Via Jupyter Notebooks:**
+
+- Activate the virtual environment (if not already activated) and launch Jupyter Notebook:
+  ```sh
+  jupyter notebook
+  ```
+
+- Open and run the individual notebooks:
+  - [Part1-coins.ipynb](http://_vscodecontentref_/0)
+  - [Part2-Panorama.ipynb](http://_vscodecontentref_/1)
+
+---
+
+Ensure all dependencies are installed correctly before running the scripts. If you encounter any issues, verify that your virtual environment is activated and that all packages are installed properly.
+
 
 ---
 
@@ -45,32 +78,187 @@ This repository is self-contained and runs without additional intervention. All 
 
 ## Part A: Coin Detection, Segmentation & Counting
 
-### Input Data
+### Dataset Location  
+The coin images are located in the `Inputs/Part-1` folder.
 
-- Input images for coin processing are located in the [Part-1](http://_vscodecontentref_/3) directory, including files like `img1.jpg`, `img2.jpg`, and `img3.jpg`.
+- **img1.jpg:**  
+  This is the base image used for coin detection and segmentation.
+
+- **img2.jpg:**  
+  This image is derived from img1 by rotating it 90 degrees and slightly elongating the scene. Additionally, img2 contains 2 extra coins.
+
+- **img3.jpg:**  
+  This image is similar to img1 but features a slight rotation and a subtle change in the background.
 
 ### Processing and Methods
 
-- **Detection:**  
-  Coin boundaries are identified using advanced edge detection techniques.
-  
-- **Segmentation:**  
-  The detected edges allow for effective segmentation of coins from the background.
-  
-- **Counting:**  
-  Each segmented coin is counted, and the total is annotated on the processed images.
+#### 1. Preprocessing
+
+##### Grayscale, HSV and Lab Conversion
+To improve the robustness of the coin detection process, the input images were converted into three different color spaces:  
+
+- **Grayscale:** Simplifies processing by focusing on intensity variations.  
+- **HSV (Hue, Saturation, Value):** Helps in distinguishing objects based on color and intensity variations.  
+- **Lab (Lightness, a, b):** Designed to approximate human vision and enhance contrast between objects and background.  
+
+The subsequent blurring and edge detection operations were applied separately to each of these color spaces.
+
+##### Noise Reduction
+To reduce noise and avoid false edge detection, Gaussian and Median blurs are applied:
+
+- **Gaussian Blur:**  
+  - Applied with a kernel size of (5,5).  
+  - Helps smooth the image by averaging pixel values with a Gaussian kernel, effectively reducing high-frequency noise.  
+
+- **Median Blur:**  
+  - Applied with a kernel size of 5.  
+  - Replaces each pixel's value with the median of the intensities in its neighborhood, which is particularly effective in removing salt-and-pepper noise.  
+
+After testing both methods, it was observed that the **Median Blur did not produce satisfactory results**, often leading to loss of finer edge details and incomplete contour detection. As a result, **Gaussian Blur was used exclusively for all images** to ensure better edge clarity and reliable segmentation.
+
+---
+
+#### 2. Edge Detection
+
+To identify coin boundaries effectively, multiple edge detection techniques were explored across different color spaces (Grayscale, HSV, and Lab). 
+
+##### Methods Tried
+
+- **Sobel Operator:**  
+  - Computes the gradient magnitude in both horizontal and vertical directions.  
+  - Detects edges but is sensitive to noise and may produce thicker edges.  
+
+- **Laplacian of Gaussian (LoG) / Marr-Hildreth:**  
+  - Applies a Gaussian blur followed by the Laplacian operator to detect edges.  
+  - Enhances regions with rapid intensity change but can be sensitive to noise.  
+
+- **Canny Edge Detector:**  
+  - A multi-stage algorithm including noise reduction, gradient calculation, non-maximum suppression, and edge tracking by hysteresis.  
+  - Known for its ability to detect true weak edges and produce thin, well-defined edges.  
+
+- **Roberts Cross Operator:**  
+  - One of the simplest edge detection methods that computes gradient magnitude using a 2×2 convolution kernel.  
+  - Works well for high-contrast images but is very sensitive to noise.  
+
+- **Prewitt Operator:**  
+  - Similar to Sobel but uses fixed convolution kernels rather than weighting towards the center.  
+  - Less effective than Sobel for detecting edges in noisy images.
+
+The results from each **color space (Grayscale, HSV, Lab)** and **edge detection method** are saved in the **`Outputs/Part1/`** folder.  
+Each image is **clearly labeled** to indicate the color space and edge detection technique used. 
+
+
+---
+
+### 3.Threshold Selection for Edge Detector Methods
+
+Below are the thresholds used in the code for each edge detection method, along with a brief description for each:
+
+1. **Canny Edge Detector:**  
+   - **Threshold Values:** Low = 50, High = 150  
+   - **Description:**  
+     The Canny detector uses two thresholds where the lower threshold (50) suppresses weak edges, and the higher threshold (150) retains only strong edges. This dual thresholding helps in accurate edge tracking while minimizing noise.
+
+2. **Laplacian of Gaussian (Marr-Hildreth):**  
+   - **Threshold Value:** `int(0.1 * np.max(log_abs))`  
+   - **Description:**  
+     An adaptive threshold is calculated as 10% of the maximum value from the absolute Laplacian response. This adapts to image contrast by ensuring only significant changes (edges) are detected.
+
+3. **Sobel Edge Detector:**  
+   - **Threshold Value:** 50  
+   - **Description:**  
+     A fixed threshold of 50 is applied to the magnitude of the Sobel gradients. This value was chosen to balance sensitivity to genuine edges with the suppression of noise artifacts.
+
+4. **Roberts Cross Operator:**  
+   - **Threshold Value:** 10  
+   - **Description:**  
+     Due to the simplicity and high sensitivity of the Roberts operator, a lower threshold (10) is used. This ensures that only pronounced edge responses are captured, reducing the number of false detections in noisy areas.
+
+5. **Prewitt Operator:**  
+   - **Threshold Value:** 50  
+   - **Description:**  
+     Like the Sobel operator, the Prewitt operator uses a threshold of 50 to convert the gradient magnitude into a binary edge map, ensuring that less significant gradients (likely due to noise) are discarded.
+
+These thresholds were chosen based on empirical observations to balance sensitivity and specificity, ensuring that true edges are detected without excessive noise.
+
+---
+
+#### 4. Contour Detection and Filtering
+
+Once the binary edge map is produced, the next step is to extract contours. Each contour is essentially a curve joining all the continuous points along the edge (having same intensity) that represent boundaries of potential objects—in our case, coins.
+
+**Finding Contours:**
+
+- The code uses OpenCV's `findContours` function to traverse the binary edge map.
+- This function collects all the connected components (contours) where the pixel intensity is non-zero.
+- Each detected contour is a series of coordinates outlining a possible coin boundary.
+
+**Filtering Contours:**
+
+Not every detected contour corresponds to an actual coin. Many may be the result of noise, small irrelevant details, or incomplete edges. To filter these out, two main criteria are applied:
+
+1. **Area Filtering:**
+   - A minimum area threshold (for example, 500) is used.
+   - Contours with an area smaller than this threshold are discarded because they are unlikely to be coins.
+   - This helps prevent tiny, spurious detections from being misinterpreted as coins.
+
+2. **Circularity Filtering:**
+   - Coins are typically near-circular. Circularity is a metric defined as:
+     
+     ß
+     Circularity = (4 × π × Area) / (Perimeter²)
+     
+     A perfect circle has a circularity of 1, while other shapes have lower values.
+   - By computing the perimeter (arc length) of the contour and using the above formula, contours that are too far from circular (falling below an empirically chosen circularity threshold, e.g., 0.7) can be removed.
+   - Although in some parts of the code this circularity check is commented out, it is an optional but useful step when noise or non-circular objects can confuse the detection.
+
+**Overall Benefit:**
+
+- Filtering on area removes small artifacts and noise.
+- Filtering on circularity further refines the results by ensuring that only contours with a shape resembling a coin (nearly circular) are retained.
+- The combination of these checks significantly reduces false positives, ensuring that subsequent steps such as segmentation and counting operate on contours that are most likely actual coins.
+
+This careful contour detection and filtering process is critical for improving the accuracy of coin segmentation and counts in the overall pipeline.
+
+---
+
+#### 5. Counting and Annotation
+
+##### Counting Coins
+The number of filtered contours corresponds to the number of detected coins.
+
+##### Annotation
+The original image is annotated with the detected coin boundaries and the total count, providing a visual representation of the results.
+
 
 ### Output
 
-- Results are saved under the [Part1](http://_vscodecontentref_/4) directory:
+- Results are saved under the [Outputs/Part1](http://_vscodecontentref_/4) directory:
   - Images highlight detected coin contours.
   - Segmented coin images are provided.
   - Overlays display the coin count on the images.
 
+#### Input Image
+![](Inputs/Part-1/img2.jpg)
+
+#### Canny Edge Detection in Grayscale
+![](Outputs/Part1/img2/gray/Canny/edges.jpg)
+
+#### Coin Contours
+![](Outputs/Part1/img2/gray/Canny/coins.jpg)
+
+#### Coin Count Annotation
+![](Outputs/Part1/img2/gray/Canny/coins_with_count.jpg)
+
+#### Sample Segmented Coins
+![](Outputs/Part1/img2/gray/Canny/Segmented/coin_6.jpg)
+
+![](Outputs/Part1/img2/gray/Canny/Segmented/coin_7.jpg)
+
 ### Observations
 
-- A comparative analysis is included regarding different edge detection methods.
-- The effectiveness of segmentation and counting is discussed, and visual outputs help in verifying the results.
+By fine-tuning the thresholds for each edge detection method, the coin detection process consistently identified the same number of coins across images. However, a detailed examination of the segmented outputs revealed that the Canny Edge Detector provided the most accurate and complete coin segmentation. Additionally, it was observed that images processed in Lab and Grayscale color spaces produced comparably better results than those processed in the HSV color space.
+
 
 ---
 
