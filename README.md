@@ -16,6 +16,13 @@ This repository contains a computer vision assignment implemented in Python. It 
 
 ## Running the Code
 
+```sh
+git clone https://github.com/Sarvesh521/VR_Assignment1_Sarvesh_IMT2022521.git
+cd VR_Assignment1_Sarvesh_IMT2022521
+
+```
+
+
 To ensure a smooth execution of the code, it is recommended to use a virtual environment to manage dependencies.
 
 ### **1. Setting Up a Virtual Environment**
