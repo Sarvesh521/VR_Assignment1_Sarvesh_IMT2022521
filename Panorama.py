@@ -3,17 +3,15 @@ import cv2
 import numpy as np
 
 def ensure_output_folder(folder):
-    """Create the output folder if it doesn't already exist."""
     if not os.path.exists(folder):
         os.makedirs(folder)
 
 def load_images(folder_path):
-    """Load all images (jpg, png, etc.) from a folder."""
     image_paths = []
     for filename in os.listdir(folder_path):
         if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff')):
             image_paths.append(os.path.join(folder_path, filename))
-    image_paths.sort()  # Ensure a consistent order
+    image_paths.sort() 
     
     images = []
     for path in image_paths:
@@ -131,7 +129,6 @@ def crop_black_areas(image):
     Crop away black (empty) regions from a stitched panorama.
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # Threshold to find non-black pixels
     _, thresh = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
     coords = cv2.findNonZero(thresh)
     if coords is not None:
@@ -151,7 +148,6 @@ def stitch_images_basic(images, method="ORB", ratio_thresh=0.75):
     matches_list = match_keypoints(descriptors_list, method=method, ratio_thresh=ratio_thresh)
     homographies = compute_homographies(matches_list, keypoints_list)
     
-    # Start panorama with the first image
     panorama = images[0]
     H_cumulative = np.eye(3)
     
@@ -251,7 +247,6 @@ def stitch_images_feathered(images, method="ORB", ratio_thresh=0.75, blend_width
     return panorama
 
 def main():
-    # Configure folders
     input_folder = "Inputs/Part-2"
     output_folder = os.path.join("Outputs", "Part2")
     ensure_output_folder(output_folder)
