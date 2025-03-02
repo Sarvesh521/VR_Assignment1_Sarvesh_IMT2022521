@@ -76,21 +76,18 @@ def detect_coins_canny(orig, image, blurred, color_space,image_name):
     dilated_edges = cv2.dilate(edges, kernel, iterations=1)
     closed_edges = cv2.morphologyEx(dilated_edges, cv2.MORPH_CLOSE, kernel, iterations=2)
 
-    # out_dir = f"Outputs/Part1/{color_space}/Canny"
     out_dir = f"Outputs/Part1/{image_name}/{color_space}/Canny"
     ensure_dir(out_dir)
-    # Display the edges image
     plt.figure(figsize=(10, 10))
     plt.imshow(closed_edges, cmap='gray')
     plt.title('Detected Edges using Canny in ' + color_space)
     plt.axis('off')
-    # plt.show()
     plt.savefig(f"{out_dir}/edges.jpg")
     plt.close()
 
     contours, _ = cv2.findContours(closed_edges.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     filtered_contours = []
-    min_area = 500  # Adjust this value based on the coin scale in your image
+    min_area = 500  # You can adjust this value based on the coin size 
     for contour in contours:
         area = cv2.contourArea(contour)
         if area >= min_area:
@@ -103,7 +100,6 @@ def detect_coins_canny(orig, image, blurred, color_space,image_name):
     plt.imshow(cv2.cvtColor(image_with_coins, cv2.COLOR_BGR2RGB))
     plt.title('Detected Coins using Canny in ' + color_space)
     plt.axis('off')
-    # plt.show()
     plt.savefig(f"{out_dir}/coins.jpg")
     plt.close()
 
@@ -178,11 +174,9 @@ def detect_coins_marr_hildreth(orig, image, blurred, color_space,image_name):
     kernel = np.ones((3, 3), np.uint8)
     closed_edges = cv2.morphologyEx(log_edges, cv2.MORPH_CLOSE, kernel, iterations=2)
     
-    # out_dir = f"Outputs/Part1/{color_space}/Marr-Hildreth"
     out_dir = f"Outputs/Part1/{image_name}/{color_space}/Marr-Hildreth"
     ensure_dir(out_dir)
     
-    # Save the LoG edges image
     plt.figure(figsize=(10, 10))
     plt.imshow(closed_edges, cmap='gray')
     plt.title('Detected Edges (Marr-Hildreth / LoG) in ' + color_space)
@@ -195,7 +189,7 @@ def detect_coins_marr_hildreth(orig, image, blurred, color_space,image_name):
     
     # Filter contours, for example discarding those with a small area (tweak threshold as needed)
     filtered_contours = []
-    min_area = 500  # Adjust this value based on the coin scale in your image
+    min_area = 500  
     for contour in contours:
         area = cv2.contourArea(contour)
         if area >= min_area:
@@ -281,10 +275,8 @@ def detect_coins_sobel(orig, image, blurred, color_space,image_name):
     kernel = np.ones((3, 3), np.uint8)
     closed_edges = cv2.morphologyEx(sobel_edges, cv2.MORPH_CLOSE, kernel, iterations=2)
     
-    # out_dir = f"Outputs/Part1/{color_space}/Sobel"
     out_dir = f"Outputs/Part1/{image_name}/{color_space}/Sobel"
     ensure_dir(out_dir)
-    # Save Sobel edges image
     plt.figure(figsize=(10, 10))
     plt.imshow(closed_edges, cmap='gray')
     plt.title('Detected Edges (Sobel) in ' + color_space)
@@ -388,7 +380,6 @@ def detect_coins_roberts(orig, image, blurred, color_space,image_name):
     plt.imshow(cv2.cvtColor(image_with_coins, cv2.COLOR_BGR2RGB))
     plt.title('Detected Coins using Roberts in ' + color_space)
     plt.axis('off')
-    # plt.show()
     plt.savefig(f"{out_dir}/coins.jpg")
     plt.close()
     
@@ -419,8 +410,7 @@ def detect_coins_prewitt(orig, image, blurred, color_space,image_name):
     # Morphological closing to fill gaps in edges
     kernel = np.ones((3, 3), np.uint8)
     closed_edges = cv2.morphologyEx(prewitt_edges, cv2.MORPH_CLOSE, kernel, iterations=2)
-    
-    # out_dir = f"Outputs/Part1/{color_space}/Prewitt"
+
     out_dir = f"Outputs/Part1/{image_name}/{color_space}/Prewitt"
     ensure_dir(out_dir)
     # Display Prewitt edges image
@@ -428,7 +418,6 @@ def detect_coins_prewitt(orig, image, blurred, color_space,image_name):
     plt.imshow(closed_edges, cmap='gray')
     plt.title('Detected Edges (Prewitt) in ' + color_space)
     plt.axis('off')
-    # plt.show()
     plt.savefig(f"{out_dir}/edges.jpg")
     plt.close()
 
@@ -436,7 +425,7 @@ def detect_coins_prewitt(orig, image, blurred, color_space,image_name):
     contours, _ = cv2.findContours(closed_edges.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     filtered_contours = []
-    min_area = 500  # Adjust this value based on coin size.
+    min_area = 500  
     for cnt in contours:
         area = cv2.contourArea(cnt)
         if area < min_area:
