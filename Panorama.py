@@ -2,6 +2,11 @@ import os
 import cv2
 import numpy as np
 
+def ensure_output_folder(folder):
+    """Create the output folder if it doesn't already exist."""
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
 def load_images(folder_path):
     """Load all images (jpg, png, etc.) from a folder."""
     image_paths = []
@@ -9,6 +14,7 @@ def load_images(folder_path):
         if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff')):
             image_paths.append(os.path.join(folder_path, filename))
     image_paths.sort()  # Ensure a consistent order
+    
     images = []
     for path in image_paths:
         img = cv2.imread(path)
@@ -45,6 +51,23 @@ def detect_features(images, method="ORB"):
         keypoints_list.append(kp)
         descriptors_list.append(des)
     return keypoints_list, descriptors_list
+
+def draw_and_save_keypoints(images, keypoints_list, method, output_folder):
+    """
+    Draw and save images with detected keypoints for visual verification.
+    
+    Args:
+        images (list of np.ndarray): Original images.
+        keypoints_list (list of lists): Corresponding keypoints for each image.
+        method (str): 'SIFT' or 'ORB' (for labeling).
+        output_folder (str): Where to save the keypoint-annotated images.
+    """
+    method = method.upper()
+    for idx, (img, kps) in enumerate(zip(images, keypoints_list)):
+        out_img = cv2.drawKeypoints(img, kps, None, flags=cv2.DrawMatchesFlags_DRAW_RICH_KEYPOINTS)
+        filename = os.path.join(output_folder, f"keypoints_{method}_{idx}.jpg")
+        cv2.imwrite(filename, out_img)
+        print(f"Saved keypoints for {method} (image {idx}): {filename}")
 
 def match_keypoints(descriptors_list, method="ORB", ratio_thresh=0.75):
     """
@@ -93,23 +116,33 @@ def compute_homographies(matches_list, keypoints_list):
             print(f"Not enough matches to compute homography between images {i} and {i+1}.")
             homographies.append(None)
             continue
+        
         kp1 = keypoints_list[i]
         kp2 = keypoints_list[i+1]
         src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
         dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+        
         H, mask = cv2.findHomography(dst_pts, src_pts, cv2.RANSAC, 5.0)
         homographies.append(H)
     return homographies
 
+def crop_black_areas(image):
+    """
+    Crop away black (empty) regions from a stitched panorama.
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Threshold to find non-black pixels
+    _, thresh = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
+    coords = cv2.findNonZero(thresh)
+    if coords is not None:
+        x, y, w, h = cv2.boundingRect(coords)
+        return image[y:y+h, x:x+w]
+    return image
+
 def stitch_images_basic(images, method="ORB", ratio_thresh=0.75):
     """
-    Stitch images using keypoint matching (ORB or SIFT) and homography,
-    without any blending. Finally, crop black areas.
-    
-    Args:
-        images (list of numpy.ndarray): List of images to stitch.
-        method (str): 'ORB' or 'SIFT'
-        ratio_thresh (float): Lowe's ratio test threshold.
+    Stitch images using keypoint matching (ORB or SIFT) and cumulative homographies,
+    without any blending. Crop black areas at each iteration to avoid large gaps.
     
     Returns:
         panorama (numpy.ndarray): Final stitched and cropped panorama.
@@ -117,23 +150,33 @@ def stitch_images_basic(images, method="ORB", ratio_thresh=0.75):
     keypoints_list, descriptors_list = detect_features(images, method=method)
     matches_list = match_keypoints(descriptors_list, method=method, ratio_thresh=ratio_thresh)
     homographies = compute_homographies(matches_list, keypoints_list)
+    
+    # Start panorama with the first image
     panorama = images[0]
+    H_cumulative = np.eye(3)
+    
     for i in range(1, len(images)):
         H = homographies[i - 1]
         if H is None:
             print(f"Skipping image {i}, homography is None.")
             continue
+        # Update cumulative homography to map image i -> base image 0's coords
+        H_cumulative = H_cumulative @ H
+        
         h1, w1 = panorama.shape[:2]
         h2, w2 = images[i].shape[:2]
-        warped_img = cv2.warpPerspective(images[i], H, (w1 + w2, h1))
-        warped_img[0:h1, 0:w1] = panorama
-        panorama = warped_img
-    gray_panorama = cv2.cvtColor(panorama, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray_panorama, 1, 255, cv2.THRESH_BINARY)
-    coords = cv2.findNonZero(thresh)
-    if coords is not None:
-        x, y, w, h = cv2.boundingRect(coords)
-        panorama = panorama[y:y+h, x:x+w]
+        
+        # Rough estimate for output size
+        out_w = w1 + w2
+        out_h = max(h1, h2)
+        
+        warped = cv2.warpPerspective(images[i], H_cumulative, (out_w, out_h))
+        # Place the existing panorama in the warped image
+        warped[0:h1, 0:w1] = panorama
+        
+        # Crop black regions before going to next iteration
+        panorama = crop_black_areas(warped)
+
     return panorama
 
 def feather_blend(base, warped, blend_width=30):
@@ -145,10 +188,13 @@ def feather_blend(base, warped, blend_width=30):
     h_warp, w_warp = warped.shape[:2]
     out_w = max(w_base, w_warp)
     out_h = max(h_base, h_warp)
+    
     blended = np.zeros((out_h, out_w, 3), dtype=np.uint8)
     blended[:h_base, :w_base] = base
+    
     overlap_x_start = 0
     overlap_x_end = min(w_base, w_warp)
+    
     for x in range(overlap_x_start, overlap_x_end):
         dist_to_base_edge = w_base - x
         if x >= w_base:
@@ -163,107 +209,94 @@ def feather_blend(base, warped, blend_width=30):
                 px_base = base[y, x]
                 px_warp = warped[y, x]
                 blended[y, x] = alpha * px_base + (1 - alpha) * px_warp
+    
+    # Copy remaining right portion if warped is wider
     if w_warp > w_base:
         blended[:h_warp, w_base:w_warp] = warped[:h_warp, w_base:w_warp]
+    
     return blended
 
 def stitch_images_feathered(images, method="ORB", ratio_thresh=0.75, blend_width=30):
     """
-    Stitch images using keypoint matching (ORB or SIFT) and homography,
-    then apply a feather blend in the overlap region, and finally crop black areas.
+    Stitch images using keypoint matching (ORB or SIFT) and cumulative homographies.
+    Apply feather blending, and crop black areas at each iteration.
     """
     keypoints_list, descriptors_list = detect_features(images, method=method)
     matches_list = match_keypoints(descriptors_list, method=method, ratio_thresh=ratio_thresh)
     homographies = compute_homographies(matches_list, keypoints_list)
+    
     panorama = images[0]
+    H_cumulative = np.eye(3)
+    
     for i in range(1, len(images)):
         H = homographies[i - 1]
         if H is None:
             print(f"Skipping image {i}, homography is None.")
             continue
+        H_cumulative = H_cumulative @ H
+        
         h_pano, w_pano = panorama.shape[:2]
         h2, w2 = images[i].shape[:2]
-        warped_img = cv2.warpPerspective(images[i], H, (w_pano + w2, h_pano))
-        panorama = feather_blend(panorama, warped_img, blend_width=blend_width)
-    gray_panorama = cv2.cvtColor(panorama, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray_panorama, 1, 255, cv2.THRESH_BINARY)
-    coords = cv2.findNonZero(thresh)
-    if coords is not None:
-        x, y, w, h = cv2.boundingRect(coords)
-        panorama = panorama[y:y+h, x:x+w]
+        out_w = w_pano + w2
+        out_h = max(h_pano, h2)
+        
+        warped = cv2.warpPerspective(images[i], H_cumulative, (out_w, out_h))
+        
+        # Feather-blend the new warped image with the current panorama
+        blended = feather_blend(panorama, warped, blend_width=blend_width)
+        
+        # Crop black areas before going to next iteration
+        panorama = crop_black_areas(blended)
+    
     return panorama
 
-
-def plot_and_print_keypoints(images, keypoints_list, method="ORB", output_folder="."):
-    """
-    For each input image, draw the detected keypoints, save the plotted image,
-    and print the coordinates (first 10 keypoints for brevity).
-    
-    Args:
-        images (list): List of images.
-        keypoints_list (list): List of keypoints for each image.
-        method (str): 'ORB' or 'SIFT'.
-        output_folder (str): Folder to save keypoint images.
-    """
-    method = method.upper()
-    for idx, (img, kp) in enumerate(zip(images, keypoints_list)):
-        img_kp = cv2.drawKeypoints(img, kp, None, flags=cv2.DrawMatchesFlags_DRAW_RICH_KEYPOINTS)
-        output_name = os.path.join(output_folder, f"keypoints_{method}_{idx}.jpg")
-        cv2.imwrite(output_name, img_kp)
-        print(f"Saved keypoints image: {output_name}")
-        print(f"Image {idx} ({method}) - Number of keypoints: {len(kp)}")
-        for i, point in enumerate(kp[:10]):
-            print(f"  Keypoint {i}: {point.pt}")
-        print("-" * 50)
-
-def ensure_output_folder(folder):
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-
 def main():
+    # Configure folders
     input_folder = "Inputs/Part-2"
     output_folder = os.path.join("Outputs", "Part2")
     ensure_output_folder(output_folder)
     
+    # Load input images
     images = load_images(input_folder)
     if len(images) < 2:
         print("Not enough images to stitch.")
         return
     
-    # Process and display keypoints for SIFT
-    print("\nProcessing SIFT keypoints:")
-    keypoints_sift, _ = detect_features(images, method="SIFT")
-    plot_and_print_keypoints(images, keypoints_sift, method="SIFT", output_folder=output_folder)
-    
-    # 1) SIFT (no blending)
-    print("\nStitching with SIFT (no blending)...")
+    # --- SIFT Keypoints ---
+    keypoints_sift, descriptors_sift = detect_features(images, method="SIFT")
+    draw_and_save_keypoints(images, keypoints_sift, "SIFT", output_folder)
+
+    # Stitch with SIFT (no blending), cropping black regions at each step
+    print("\nStitching with SIFT (no blending, iterative crop)...")
     panorama_sift_basic = stitch_images_basic(images, method="SIFT", ratio_thresh=0.75)
-    cv2.imwrite(os.path.join(output_folder, "final_panorama_sift.jpg"), panorama_sift_basic)
-    print("Saved: final_panorama_sift.jpg")
+    sift_basic_path = os.path.join(output_folder, "final_panorama_sift.jpg")
+    cv2.imwrite(sift_basic_path, panorama_sift_basic)
+    print(f"Saved: {sift_basic_path}")
     
-    # 2) SIFT + Feather Blending
-    print("\nStitching with SIFT + Feather Blending...")
+    # Stitch with SIFT + Feather Blending, cropping black regions at each step
+    print("\nStitching with SIFT + Feather Blending (iterative crop)...")
     panorama_sift_feather = stitch_images_feathered(images, method="SIFT", ratio_thresh=0.75, blend_width=50)
-    cv2.imwrite(os.path.join(output_folder, "final_panorama_sift_feather.jpg"), panorama_sift_feather)
-    print("Saved: final_panorama_sift_feather.jpg")
-    
-    # Process and display keypoints for ORB
-    print("\nProcessing ORB keypoints:")
-    keypoints_orb, _ = detect_features(images, method="ORB")
-    plot_and_print_keypoints(images, keypoints_orb, method="ORB", output_folder=output_folder)
-    
-    # 3) ORB (no blending)
-    print("\nStitching with ORB (no blending)...")
+    sift_feather_path = os.path.join(output_folder, "final_panorama_sift_feather.jpg")
+    cv2.imwrite(sift_feather_path, panorama_sift_feather)
+    print(f"Saved: {sift_feather_path}")
+
+    # --- ORB Keypoints ---
+    keypoints_orb, descriptors_orb = detect_features(images, method="ORB")
+    draw_and_save_keypoints(images, keypoints_orb, "ORB", output_folder)
+
+    # Stitch with ORB (no blending), cropping black regions at each step
+    print("\nStitching with ORB (no blending, iterative crop)...")
     panorama_orb_basic = stitch_images_basic(images, method="ORB", ratio_thresh=0.75)
-    cv2.imwrite(os.path.join(output_folder, "final_panorama_orb.jpg"), panorama_orb_basic)
-    print("Saved: final_panorama_orb.jpg")
-    
-    # 4) ORB + Feather Blending
-    print("\nStitching with ORB + Feather Blending...")
+    orb_basic_path = os.path.join(output_folder, "final_panorama_orb.jpg")
+    cv2.imwrite(orb_basic_path, panorama_orb_basic)
+    print(f"Saved: {orb_basic_path}")
+
+    # Stitch with ORB + Feather Blending
+    print("\nStitching with ORB + Feather Blending (iterative crop)...")
     panorama_orb_feather = stitch_images_feathered(images, method="ORB", ratio_thresh=0.75, blend_width=50)
-    cv2.imwrite(os.path.join(output_folder, "final_panorama_orb_feather.jpg"), panorama_orb_feather)
-    print("Saved: final_panorama_orb_feather.jpg")
-    
+    orb_feather_path = os.path.join(output_folder, "final_panorama_orb_feather.jpg")
+    cv2.imwrite(orb_feather_path, panorama_orb_feather)
+    print(f"Saved: {orb_feather_path}")
 
 if __name__ == "__main__":
     main()
