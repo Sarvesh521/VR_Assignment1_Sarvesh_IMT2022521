@@ -264,33 +264,73 @@ By fine-tuning the thresholds for each edge detection method, the coin detection
 
 ## Part B: Panorama Creation
 
-### Input Data
+### Dataset Location  
+The coin images are located in the `Inputs/Part-2` folder.
 
-- The images used for creating panoramas are stored in the [Part-2](http://_vscodecontentref_/5) directory.
+- **Image-3.jpg:**  
+![](Inputs/Part-2/Image-3.jpg)
+
+- **Image-4.jpg:**  
+![](Inputs/Part-2/Image-4.jpg)
+
+- **Image-6.jpg:**  
+![](Inputs/Part-2/Image-6.jpg)
+
 
 ### Processing and Methods
 
 - **Feature Detection & Matching:**  
-  Techniques like SIFT and ORB are used to identify and match keypoints across images.
-  
+  The code first extracts keypoints and computes descriptors for each input image using SIFT and ORB. A brute-force matcher then compares these descriptors between consecutive images. For ORB, the Hamming distance is used; for SIFT, the L2 norm is employed. A ratio test is applied to keep only the most reliable matches, which form the basis for computing the homographies.
+
 - **Image Stitching:**  
-  Two stitching approaches are applied:
-  - **Basic Stitching:** Direct stitching without blending.
-  - **Feather Blending:** Creates smoother transitions between images.
+  Using the set of reliable matches, homographies are computed between consecutive image pairs with the RANSAC algorithm. These homographies are combined cumulatively to warp each subsequent image into the coordinate system of the first image. Two stitching approaches are implemented:
   
+  - **Basic Stitching:**  
+    In this approach, images are warped according to the cumulative homography and directly overlaid onto a common canvas. After each new image is added, the resulting panorama is cropped to remove black borders. However, this method may produce visible straight seams or hard boundaries between images.
+  
+  - **Feather Blending:**  
+    To eliminate the harsh transitions seen in basic stitching, a feather blending technique is applied to the overlapping regions between images. Feather blending calculates a weighted average (using an alpha factor that tapers near the edge) for the overlapping pixels, thereby smoothing the transition and removing the straight lines or abrupt seams. This results in a more seamless and visually pleasing panorama.
+
 - **Cropping:**  
-  The stitched panorama is cropped to remove unwanted borders.
+  Once the images are stitched together—either with basic stitching or feather blending—the panorama may contain black, empty regions due to perspective warping. The code automatically detects and crops these areas by thresholding the panorama and finding the bounding rectangle surrounding all non-black pixels.
+
+In summary, the `Panorama.py` file implements these steps to create a final stitched panorama. Initially, the basic stitching approach was used but produced unsightly straight lines between images. The integration of feather blending remedied this issue, ensuring smooth transitions across overlapping areas and significantly enhancing the visual quality of the final panorama.
 
 ### Output
 
-- The final panoramic images are stored in the [Part2](http://_vscodecontentref_/6) directory:
+- The final panoramic images are stored in the [Outputs/Part2](http://_vscodecontentref_/6) directory:
   - Displays include keypoint visualizations.
-  - Both basic and feather-blended panoramas are generated.
+  - Both basic and feather-blended panoramas are generated for both the methods (SIFT and ORB).
+
+
+#### Feature Extractions with SIFT
+![](Outputs/Part2/keypoints_SIFT_0.jpg)
+![](Outputs/Part2/keypoints_SIFT_1.jpg)
+![](Outputs/Part2/keypoints_SIFT_2.jpg)
+
+#### Feature Extractions with ORB
+![](Outputs/Part2/keypoints_ORB_0.jpg)
+![](Outputs/Part2/keypoints_ORB_1.jpg)
+![](Outputs/Part2/keypoints_ORB_2.jpg)
+
+#### Paroma with SIFT 
+![](Outputs/Part2/final_panorama_sift.jpg)
+
+#### Paroma with ORB 
+![](Outputs/Part2/final_panorama_orb.jpg)
+
+#### Paroma with SIFT + Feather Blend
+![](Outputs/Part2/final_panorama_sift_feather.jpg)
+
+#### Paroma with ORB + Feather Blend 
+![](Outputs/Part2/final_panorama_orb_feather.jpg)
+
 
 ### Observations
 
 - Detailed analysis is provided for keypoint matching and panorama quality.
 - Visual comparisons demonstrate the benefits of feather blending over the basic method.
+- SIFT method utilizes more points compared to ORB
 
 ---
 
@@ -309,10 +349,6 @@ By fine-tuning the thresholds for each edge detection method, the coin detection
 - Both script-based and notebook-based implementations run autonomously without further intervention.
 - The performance of each module is validated by the accuracy of coin counts and the visual quality of panoramas.
   
-### Lessons Learned
-
-- **Successes:**  
-  Refined segmentation and effective panorama blending were key achievements.
   
 - **Challenges:**  
   Fine-tuning parameters for various methods required iterative testing, and handling a range of image qualities posed challenges.
